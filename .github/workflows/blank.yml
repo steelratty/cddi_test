@@ -161,3 +161,11 @@ jobs:
           echo "========= MERGED LOG (PROD) ========="
           wc -c "${LOG_FILE_NAME}" | awk '{print "size(bytes):",$1}'
           cat -n "${LOG_FILE_NAME}"
+    
+      - name: Upload log (after prod deploy)
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-after-prod
+          path: ${{ env.LOG_FILE_NAME }}
+          retention-days: 7
+      
