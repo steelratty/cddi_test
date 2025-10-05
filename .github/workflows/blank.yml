@@ -3,19 +3,12 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ main ]
-  # Для ручного запуска prod-деплоя (опционально)
   workflow_dispatch:
-
-concurrency:
-  # Блокирует параллельные запуски одного workflow на одной ветке
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
 
 env:
   LOG_FILE_NAME: log.txt
 
 jobs:
-  # === Stage: Build ===
   build_job:
     runs-on: ubuntu-latest
     steps:
@@ -28,14 +21,13 @@ jobs:
           echo "Building the application..." | tee -a "${LOG_FILE_NAME}"
           echo "---Build Completed---" | tee -a "${LOG_FILE_NAME}"
 
-      - name: Upload log artifact
+      - name: Upload log (after build)
         uses: actions/upload-artifact@v4
         with:
-          name: log-artifact
+          name: log-after-build
           path: ${{ env.LOG_FILE_NAME }}
           retention-days: 7
 
-  # === Stage: Test (sequential) ===
   test_job1:
     needs: build_job
     runs-on: ubuntu-latest
@@ -43,10 +35,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download log
+      - name: Download log from build
         uses: actions/download-artifact@v4
         with:
-          name: log-artifact
+          name: log-after-build
 
       - name: Run Test 1
         run: |
@@ -55,10 +47,10 @@ jobs:
           echo "Running unit tests..." | tee -a "${LOG_FILE_NAME}"
           echo "---Test Job 1 Completed---" | tee -a "${LOG_FILE_NAME}"
 
-      - name: Upload updated log
+      - name: Upload log (after test1)
         uses: actions/upload-artifact@v4
         with:
-          name: log-artifact
+          name: log-after-test1
           path: ${{ env.LOG_FILE_NAME }}
           retention-days: 7
 
@@ -69,10 +61,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download log
+      - name: Download log from test1
         uses: actions/download-artifact@v4
         with:
-          name: log-artifact
+          name: log-after-test1
 
       - name: Run Test 2
         run: |
@@ -81,10 +73,10 @@ jobs:
           echo "Running integration tests..." | tee -a "${LOG_FILE_NAME}"
           echo "---Test Job 2 Completed---" | tee -a "${LOG_FILE_NAME}"
 
-      - name: Upload updated log
+      - name: Upload log (after test2)
         uses: actions/upload-artifact@v4
         with:
-          name: log-artifact
+          name: log-after-test2
           path: ${{ env.LOG_FILE_NAME }}
           retention-days: 7
 
@@ -95,10 +87,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download log
+      - name: Download log from test2
         uses: actions/download-artifact@v4
         with:
-          name: log-artifact
+          name: log-after-test2
 
       - name: Run Test 3
         run: |
@@ -107,14 +99,13 @@ jobs:
           echo "Running E2E tests..." | tee -a "${LOG_FILE_NAME}"
           echo "---Test Job 3 Completed---" | tee -a "${LOG_FILE_NAME}"
 
-      - name: Upload updated log
+      - name: Upload log (after test3)
         uses: actions/upload-artifact@v4
         with:
-          name: log-artifact
+          name: log-after-test3
           path: ${{ env.LOG_FILE_NAME }}
           retention-days: 7
 
-  # === Stage: Deploy to DEV ===
   deploy_to_dev_job:
     needs: test_job3
     runs-on: ubuntu-latest
@@ -122,10 +113,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download log
+      - name: Download log from test3
         uses: actions/download-artifact@v4
         with:
-          name: log-artifact
+          name: log-after-test3
 
       - name: Deploy to DEV
         run: |
@@ -138,31 +129,27 @@ jobs:
           wc -c "${LOG_FILE_NAME}" | awk '{print "size(bytes):",$1}'
           cat -n "${LOG_FILE_NAME}"
 
-      - name: Upload final log (for prod)
+      - name: Upload log (after dev deploy)
         uses: actions/upload-artifact@v4
         with:
-          name: log-artifact
+          name: log-after-dev
           path: ${{ env.LOG_FILE_NAME }}
           retention-days: 7
 
-  # === Stage: Deploy to PROD (manual) ===
   deploy_to_prd_job:
     needs: deploy_to_dev_job
     runs-on: ubuntu-latest
-    # Только из main + ручной запуск
     if: github.ref == 'refs/heads/main'
-    environment:
-      name: production
-      # Опционально: добавьте required reviewers в Settings → Environments
-    concurrency: production  # ← ключевая настройка: только один запуск в проде
+    environment: production
+    concurrency: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download log
+      - name: Download log from dev deploy
         uses: actions/download-artifact@v4
         with:
-          name: log-artifact
+          name: log-after-dev
 
       - name: Deploy to PROD
         run: |
