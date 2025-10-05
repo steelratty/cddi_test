@@ -1,0 +1,176 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  # Для ручного запуска prod-деплоя (опционально)
+  workflow_dispatch:
+
+concurrency:
+  # Блокирует параллельные запуски одного workflow на одной ветке
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  LOG_FILE_NAME: log.txt
+
+jobs:
+  # === Stage: Build ===
+  build_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and create log
+        run: |
+          echo "---Build Started---" | tee "${LOG_FILE_NAME}"
+          echo "Building the application..." | tee -a "${LOG_FILE_NAME}"
+          echo "---Build Completed---" | tee -a "${LOG_FILE_NAME}"
+
+      - name: Upload log artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-artifact
+          path: ${{ env.LOG_FILE_NAME }}
+          retention-days: 7
+
+  # === Stage: Test (sequential) ===
+  test_job1:
+    needs: build_job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download log
+        uses: actions/download-artifact@v4
+        with:
+          name: log-artifact
+
+      - name: Run Test 1
+        run: |
+          test -f "${LOG_FILE_NAME}"
+          echo "---Test Job 1 Started---" | tee -a "${LOG_FILE_NAME}"
+          echo "Running unit tests..." | tee -a "${LOG_FILE_NAME}"
+          echo "---Test Job 1 Completed---" | tee -a "${LOG_FILE_NAME}"
+
+      - name: Upload updated log
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-artifact
+          path: ${{ env.LOG_FILE_NAME }}
+          retention-days: 7
+
+  test_job2:
+    needs: test_job1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download log
+        uses: actions/download-artifact@v4
+        with:
+          name: log-artifact
+
+      - name: Run Test 2
+        run: |
+          test -f "${LOG_FILE_NAME}"
+          echo "---Test Job 2 Started---" | tee -a "${LOG_FILE_NAME}"
+          echo "Running integration tests..." | tee -a "${LOG_FILE_NAME}"
+          echo "---Test Job 2 Completed---" | tee -a "${LOG_FILE_NAME}"
+
+      - name: Upload updated log
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-artifact
+          path: ${{ env.LOG_FILE_NAME }}
+          retention-days: 7
+
+  test_job3:
+    needs: test_job2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download log
+        uses: actions/download-artifact@v4
+        with:
+          name: log-artifact
+
+      - name: Run Test 3
+        run: |
+          test -f "${LOG_FILE_NAME}"
+          echo "---Test Job 3 Started---" | tee -a "${LOG_FILE_NAME}"
+          echo "Running E2E tests..." | tee -a "${LOG_FILE_NAME}"
+          echo "---Test Job 3 Completed---" | tee -a "${LOG_FILE_NAME}"
+
+      - name: Upload updated log
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-artifact
+          path: ${{ env.LOG_FILE_NAME }}
+          retention-days: 7
+
+  # === Stage: Deploy to DEV ===
+  deploy_to_dev_job:
+    needs: test_job3
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download log
+        uses: actions/download-artifact@v4
+        with:
+          name: log-artifact
+
+      - name: Deploy to DEV
+        run: |
+          test -f "${LOG_FILE_NAME}"
+          echo "---Deploy to DEV Started---" | tee -a "${LOG_FILE_NAME}"
+          echo "Deploying to DEV..." | tee -a "${LOG_FILE_NAME}"
+          echo "---Deploy to DEV Completed---" | tee -a "${LOG_FILE_NAME}"
+
+          echo "========= MERGED LOG (DEV) ========="
+          wc -c "${LOG_FILE_NAME}" | awk '{print "size(bytes):",$1}'
+          cat -n "${LOG_FILE_NAME}"
+
+      - name: Upload final log (for prod)
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-artifact
+          path: ${{ env.LOG_FILE_NAME }}
+          retention-days: 7
+
+  # === Stage: Deploy to PROD (manual) ===
+  deploy_to_prd_job:
+    needs: deploy_to_dev_job
+    runs-on: ubuntu-latest
+    # Только из main + ручной запуск
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      # Опционально: добавьте required reviewers в Settings → Environments
+    concurrency: production  # ← ключевая настройка: только один запуск в проде
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download log
+        uses: actions/download-artifact@v4
+        with:
+          name: log-artifact
+
+      - name: Deploy to PROD
+        run: |
+          test -f "${LOG_FILE_NAME}"
+          echo "---Deploy to PROD Started---" | tee -a "${LOG_FILE_NAME}"
+          echo "Deploying to PRODUCTION..." | tee -a "${LOG_FILE_NAME}"
+          echo "---Deploy to PROD Completed---" | tee -a "${LOG_FILE_NAME}"
+
+          echo "========= MERGED LOG (PROD) ========="
+          wc -c "${LOG_FILE_NAME}" | awk '{print "size(bytes):",$1}'
+          cat -n "${LOG_FILE_NAME}"
